@@ -1051,3 +1051,89 @@ mark {
     display: flex;
   }
 }
+
+/* Active project name row & deselect button */
+.active-project-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.deselect-project-btn {
+  color: var(--text-muted);
+}
+
+.deselect-project-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* Tracking status toggle button in active project card */
+.tracking-status-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 99px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tracking-status-toggle:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.tracking-status-toggle.live {
+  color: var(--accent-green);
+  border-color: rgba(6, 214, 160, 0.35);
+  background: rgba(6, 214, 160, 0.05);
+}
+
+.tracking-status-toggle.live:hover {
+  background: rgba(6, 214, 160, 0.15);
+  border-color: rgba(6, 214, 160, 0.55);
+}
+
+.tracking-status-toggle.paused {
+  color: var(--text-secondary);
+}
+
+.tracking-status-toggle.paused .pulse-dot {
+  background-color: var(--text-muted);
+  box-shadow: none;
+  animation: none;
+}
+
+/* Inline project editing form in sidebar */
+.edit-project-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-active);
+  padding: 12px;
+  border-radius: 12px;
+  width: 100%;
+  animation: slideIn 0.2s ease;
+  box-shadow: var(--shadow-sm);
+}
+
+.edit-project-input {
+  font-size: 12px;
+  padding: 6px 10px;
+  height: auto;
+}
+
+.edit-project-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}

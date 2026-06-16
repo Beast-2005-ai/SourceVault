@@ -7,81 +7,7 @@ interface Project {
   color?: string;
 }
 
-// Seed data matching the user's real-world example
-const seedProjects: Project[] = [
-  {
-    name: "Drone Mapping",
-    description: "LiDAR and camera-based drone terrain mapping & navigation.",
-    color: "#9d4edd",
-  },
-  {
-    name: "Smart Emergency System",
-    description: "Multi-hazard emergency response and detection system.",
-    color: "#3a86c8",
-  },
-  {
-    name: "Neural Network Notes",
-    description: "Deep learning concepts, neural architectures, and PyTorch guides.",
-    color: "#06d6a0",
-  },
-];
-
-const seedSources: Source[] = [
-  {
-    id: 1,
-    title: "TF02-Pro LiDAR Datasheet",
-    url: "https://www.benewake.com/TF02-Pro",
-    project: "Drone Mapping",
-    notes: "TF02-Pro single-point LiDAR sensor datasheet. 40m range, UART interface. Essential for height hold and obstacle sensing.",
-    tags: ["LiDAR", "Datasheet", "UART", "Hardware"],
-    createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 2,
-    title: "Raspberry Pi UART Configuration",
-    url: "https://www.raspberrypi.com/documentation/computers/configuration.html#configuring-uarts",
-    project: "Drone Mapping",
-    notes: "Official guide on enabling and mapping PL011 and mini UART ports on Raspberry Pi 4/5. Critical for LiDAR interface wiring.",
-    tags: ["UART", "Raspberry Pi", "Docs"],
-    createdAt: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 3,
-    title: "TF02-Pro Driver Repository",
-    url: "https://github.com/rpi-lidar/tf02-pro-driver",
-    project: "Drone Mapping",
-    notes: "Python driver for tf02-pro on Pi. Features real-time distance polling and error correction logic.",
-    tags: ["LiDAR", "GitHub", "Driver", "Python"],
-    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 4,
-    title: "Multi-Hazard Smart Response System",
-    url: "https://example.com/emergency-system-proposal",
-    project: "Smart Emergency System",
-    notes: "Architecture draft for multi-hazard detection using sensor networks, Hailo AI acceleration, and local gateway alerting.",
-    tags: ["Proposal", "Specs", "AI"],
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 5,
-    title: "PIR Sensor Logic (Motion Alert)",
-    url: "https://github.com/sensors/pir-logic",
-    project: "Smart Emergency System",
-    notes: "Arduino logic sketch for dual PIR detection configuration. Eliminates false positives from ambient heat spikes.",
-    tags: ["PIR", "GitHub", "Arduino", "Sensor"],
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 6,
-    title: "PyTorch Neural Network Blitz Tutorial",
-    url: "https://pytorch.org/tutorials/beginner/blitz/neural_networks_tutorial.html",
-    project: "Neural Network Notes",
-    notes: "A quick introduction to defining convolutional networks, computing gradients via Autograd, and updating weights.",
-    tags: ["PyTorch", "Tutorial", "Neural Network"],
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
+// No seed data required for production
 
 // Icons
 const IconBrain = () => (
@@ -264,10 +190,10 @@ const timeAgo = (dateStr: string) => {
 };
 
 function App() {
-  // State for Projects (seeded if empty)
+  // State for Projects (initially empty)
   const [projects, setProjects] = useState<Project[]>(() => {
     const saved = localStorage.getItem("projects");
-    if (!saved) return seedProjects;
+    if (!saved) return [];
     try {
       const parsed = JSON.parse(saved);
       // Backwards compatibility upgrade
@@ -275,32 +201,38 @@ function App() {
         return parsed.map((name: string) => ({
           name,
           description: "Active research folder",
-          color: name === "Drone Mapping" ? "#9d4edd" : name === "Smart Emergency System" ? "#3a86c8" : "#06d6a0",
+          color: "#9d4edd",
         }));
       }
       return parsed;
     } catch {
-      return seedProjects;
+      return [];
     }
   });
 
-  // Active Project (seeded if empty)
+  // Active Project (initially empty)
   const [activeProject, setActiveProject] = useState<string>(() => {
     const saved = localStorage.getItem("activeProject");
-    return saved || "Drone Mapping";
+    return saved || "";
   });
 
-  // Sources (seeded if empty)
+  // Sources (initially empty)
   const [sources, setSources] = useState<Source[]>(() => {
     const saved = localStorage.getItem("sources");
     if (saved) {
       try {
         return JSON.parse(saved);
       } catch {
-        return seedSources;
+        return [];
       }
     }
-    return seedSources;
+    return [];
+  });
+
+  // Live/Paused Tracking Status state
+  const [isTrackingLive, setIsTrackingLive] = useState<boolean>(() => {
+    const saved = localStorage.getItem("isTrackingLive");
+    return saved === null ? true : saved === "true";
   });
 
   // Form states for creating a project
@@ -328,6 +260,11 @@ function App() {
   const [editTags, setEditTags] = useState("");
   const [editProject, setEditProject] = useState("");
 
+  // Project editing states
+  const [editingProjectName, setEditingProjectName] = useState<string | null>(null);
+  const [editProjNameInput, setEditProjNameInput] = useState("");
+  const [editProjDescInput, setEditProjDescInput] = useState("");
+
   // Mobile/Popup Responsive tab toggle state
   const [mobileTab, setMobileTab] = useState<"projects" | "sources">("sources");
 
@@ -343,6 +280,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("sources", JSON.stringify(sources));
   }, [sources]);
+
+  useEffect(() => {
+    localStorage.setItem("isTrackingLive", String(isTrackingLive));
+  }, [isTrackingLive]);
 
   // Handle Cmd/Ctrl + K shortcut for search focusing
   useEffect(() => {
@@ -400,6 +341,53 @@ function App() {
         setActiveProject(remaining.length > 0 ? remaining[0].name : "");
       }
     }
+  };
+
+  // Handle Project Editing & Save (cascade name updates to sources)
+  const handleSaveProjectEdit = (oldName: string) => {
+    const newName = editProjNameInput.trim();
+    if (!newName) return;
+
+    if (
+      newName.toLowerCase() !== oldName.toLowerCase() &&
+      projects.some((p) => p.name.toLowerCase() === newName.toLowerCase())
+    ) {
+      alert("A project with this name already exists.");
+      return;
+    }
+
+    setProjects(
+      projects.map((p) => {
+        if (p.name === oldName) {
+          return {
+            ...p,
+            name: newName,
+            description: editProjDescInput.trim() || undefined,
+          };
+        }
+        return p;
+      })
+    );
+
+    // Cascade update to sources
+    setSources(
+      sources.map((s) => {
+        if (s.project === oldName) {
+          return {
+            ...s,
+            project: newName,
+          };
+        }
+        return s;
+      })
+    );
+
+    // Update activeProject if it was the one edited
+    if (activeProject === oldName) {
+      setActiveProject(newName);
+    }
+
+    setEditingProjectName(null);
   };
 
   // Handle Source Creation
@@ -576,14 +564,27 @@ function App() {
           <div className="active-project-card">
             <div className="active-project-card-header">
               <span className="active-project-label">Current Research</span>
-              <div className="active-pulse-indicator">
+              <button
+                className={`tracking-status-toggle ${isTrackingLive ? "live" : "paused"}`}
+                onClick={() => setIsTrackingLive(!isTrackingLive)}
+                title={isTrackingLive ? "Pause Tracking" : "Resume Tracking"}
+              >
                 <span className="pulse-dot"></span>
-                <span>Active</span>
-              </div>
+                <span>{isTrackingLive ? "Live" : "Paused"}</span>
+              </button>
             </div>
-            <h3 className="active-project-name" title={activeProject}>
-              {activeProject}
-            </h3>
+            <div className="active-project-name-row">
+              <h3 className="active-project-name" title={activeProject}>
+                {activeProject}
+              </h3>
+              <button
+                className="btn-icon deselect-project-btn"
+                onClick={() => setActiveProject("")}
+                title="Deselect Project"
+              >
+                <IconX />
+              </button>
+            </div>
             <div className="active-project-stats">
               <IconFolder />
               <span>
@@ -601,7 +602,7 @@ function App() {
         {/* Projects Section */}
         <div className="sidebar-section">
           <div className="section-title-row">
-            <span className="sidebar-section-title">My Projects</span>
+            <span className="sidebar-section-title">My Workspaces</span>
             <button
               className="btn-icon btn-icon-primary"
               onClick={() => setIsCreatingProject(!isCreatingProject)}
@@ -616,7 +617,7 @@ function App() {
             <form onSubmit={handleCreateProject} className="create-project-form">
               <input
                 type="text"
-                placeholder="Project Name"
+                placeholder="Workspace name..."
                 className="input-glass"
                 value={projectNameInput}
                 onChange={(e) => setProjectNameInput(e.target.value)}
@@ -625,7 +626,7 @@ function App() {
               />
               <input
                 type="text"
-                placeholder="Brief description (optional)"
+                placeholder="Description (optional)..."
                 className="input-glass"
                 value={projectDescInput}
                 onChange={(e) => setProjectDescInput(e.target.value)}
@@ -657,12 +658,65 @@ function App() {
             <div className="project-list">
               {projects.map((proj) => {
                 const count = sources.filter((s) => s.project === proj.name).length;
+                const isEditingProj = editingProjectName === proj.name;
+
+                if (isEditingProj) {
+                  return (
+                    <form
+                      key={proj.name}
+                      className="edit-project-form"
+                      onClick={(e) => e.stopPropagation()}
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleSaveProjectEdit(proj.name);
+                      }}
+                    >
+                      <input
+                        type="text"
+                        className="input-glass edit-project-input"
+                        value={editProjNameInput}
+                        onChange={(e) => setEditProjNameInput(e.target.value)}
+                        required
+                        autoFocus
+                      />
+                      <input
+                        type="text"
+                        className="input-glass edit-project-input"
+                        value={editProjDescInput}
+                        onChange={(e) => setEditProjDescInput(e.target.value)}
+                        placeholder="Description"
+                      />
+                      <div className="edit-project-actions">
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          onClick={() => setEditingProjectName(null)}
+                          title="Cancel"
+                        >
+                          <IconX />
+                        </button>
+                        <button
+                          type="submit"
+                          className="btn-icon"
+                          title="Save Changes"
+                        >
+                          <IconCheck />
+                        </button>
+                      </div>
+                    </form>
+                  );
+                }
+
                 return (
                   <div
                     key={proj.name}
                     className={`project-list-item ${activeProject === proj.name ? "active" : ""}`}
                     onClick={() => {
-                      setActiveProject(proj.name);
+                      if (activeProject === proj.name) {
+                        setActiveProject(""); // Deselect
+                      } else {
+                        setActiveProject(proj.name);
+                      }
                       setMobileTab("sources"); // Swap back to main sources on mobile
                     }}
                   >
@@ -671,6 +725,18 @@ function App() {
                       <span className="project-item-count">{count} source{count !== 1 ? "s" : ""}</span>
                     </div>
                     <div className="project-item-actions">
+                      <button
+                        className="btn-icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingProjectName(proj.name);
+                          setEditProjNameInput(proj.name);
+                          setEditProjDescInput(proj.description || "");
+                        }}
+                        title="Edit Project"
+                      >
+                        <IconEdit />
+                      </button>
                       <button
                         className="btn-icon btn-icon-danger"
                         onClick={(e) => handleDeleteProject(proj.name, e)}
@@ -703,7 +769,7 @@ function App() {
                 ref={searchInputRef}
                 type="text"
                 className="input-glass search-input"
-                placeholder="Search saved sources (e.g. 'LiDAR', 'UART')..."
+                placeholder="Search saved sources..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -787,7 +853,7 @@ function App() {
                         <label className="form-label">Title *</label>
                         <input
                           type="text"
-                          placeholder="e.g. TF02-Pro LiDAR Calibration Guide"
+                          placeholder="Source title"
                           className="input-glass"
                           value={sourceTitle}
                           onChange={(e) => setSourceTitle(e.target.value)}
@@ -798,7 +864,7 @@ function App() {
                         <label className="form-label">URL *</label>
                         <input
                           type="text"
-                          placeholder="e.g. github.com/rpi-lidar/tf02-pro-driver"
+                          placeholder="Source URL"
                           className="input-glass"
                           value={sourceUrl}
                           onChange={(e) => setSourceUrl(e.target.value)}
@@ -812,7 +878,7 @@ function App() {
                         <label className="form-label">Notes & Summary</label>
                         <input
                           type="text"
-                          placeholder="What did you learn here? Calibration steps, wiring specs, pin configurations..."
+                          placeholder="Notes, details, or summary..."
                           className="input-glass"
                           value={sourceNotes}
                           onChange={(e) => setSourceNotes(e.target.value)}
@@ -822,7 +888,7 @@ function App() {
                         <label className="form-label">Tags (comma-separated)</label>
                         <input
                           type="text"
-                          placeholder="e.g. LiDAR, Datasheet, Raspberry Pi"
+                          placeholder="Tags (comma-separated)"
                           className="input-glass"
                           value={sourceTags}
                           onChange={(e) => setSourceTags(e.target.value)}
