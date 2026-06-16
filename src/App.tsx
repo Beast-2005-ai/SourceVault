@@ -13,16 +13,7 @@ interface Project {
 
 // No seed data required for production
 
-// Icons
-const IconBrain = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="logo-icon">
-    <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
-    <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
-    <path d="M12 5v14" />
-    <path d="M12 12h6" />
-    <path d="M12 12H6" />
-  </svg>
-);
+
 
 const IconSearch = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="search-icon">
@@ -557,7 +548,7 @@ function App() {
       const matchTags = s.tags ? s.tags.some((t) => t.toLowerCase().includes(q)) : false;
       return matchTitle || matchUrl || matchNotes || matchProject || matchTags;
     } else {
-      return s.project === activeProject;
+      return !activeProject || s.project === activeProject;
     }
   });
 
@@ -569,9 +560,7 @@ function App() {
     return (
       <div className="app-container" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-primary)" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-          <div className="logo-icon" style={{ width: "48px", height: "48px", animation: "pulse 1.8s infinite" }}>
-            <IconBrain />
-          </div>
+          <img src="/icon.png" className="logo-icon" alt="SourceVault Logo" style={{ width: "48px", height: "48px", borderRadius: "8px", animation: "pulse 1.8s infinite", objectFit: "cover" }} />
           <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "18px", fontWeight: 600, color: "var(--text-secondary)" }}>
             Loading SourceVault...
           </h2>
@@ -600,12 +589,11 @@ function App() {
 
       {/* Sidebar Panel */}
       <aside className={`sidebar ${mobileTab === "sources" ? "hidden-mobile" : ""}`}>
-        {/* Header */}
         <div className="app-header">
-          <IconBrain />
+          <img src="/icon.png" className="logo-icon" alt="SourceVault Logo" style={{ borderRadius: "6px", objectFit: "cover" }} />
           <div className="app-title-container">
-            <h1 className="app-title">Research OS</h1>
-            <span className="app-badge">Phase 1 Dashboard</span>
+            <h1 className="app-title">SourceVault</h1>
+            <span className="app-badge">Extension Panel</span>
           </div>
         </div>
 

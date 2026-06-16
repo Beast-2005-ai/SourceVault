@@ -9,13 +9,13 @@
   ],
   "action": {
     "default_popup": "index.html",
-    "default_icon": "favicon.svg"
+    "default_icon": "icon.png"
   },
   "background": {
     "service_worker": "background.js",
     "type": "module"
   },
   "icons": {
-    "128": "favicon.svg"
+    "128": "icon.png"
   }
 }
