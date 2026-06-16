@@ -5,6 +5,8 @@ interface Project {
   name: string;
   description?: string;
   color?: string;
+  trackingEnabled: boolean;
+  keywords?: string[];
 }
 
 // No seed data required for production
@@ -71,11 +73,7 @@ const IconTag = () => (
   </svg>
 );
 
-const IconChevronDown = ({ isOpen }: { isOpen: boolean }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`collapsible-icon ${isOpen ? 'open' : ''}`}>
-    <path d="m6 9 6 6 6-6" />
-  </svg>
-);
+
 
 const IconX = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -189,6 +187,82 @@ const timeAgo = (dateStr: string) => {
   }
 };
 
+interface LogEntry {
+  id: number;
+  timestamp: string;
+  title: string;
+  url: string;
+  status: "captured" | "ignored";
+  matchedProjects: string[];
+}
+
+// Relevance classification algorithm
+const isPageRelevant = (project: Project, title: string, url: string): boolean => {
+  const t = title.toLowerCase();
+  const u = url.toLowerCase();
+  
+  // Tokenize workspace name, description, and keywords
+  const nameTokens = project.name.toLowerCase().split(/\s+/).filter(tok => tok.length > 2);
+  const descTokens = (project.description || "").toLowerCase().split(/\s+/).filter(tok => tok.length > 2);
+  const keywordTokens = (project.keywords || []).map(k => k.toLowerCase().trim()).filter(k => k.length > 0);
+
+  let score = 0;
+  
+  // 1. Match project name tokens
+  for (const token of nameTokens) {
+    if (t.includes(token) || u.includes(token)) score += 3;
+  }
+  
+  // 2. Match project description tokens
+  for (const token of descTokens) {
+    if (t.includes(token) || u.includes(token)) score += 1;
+  }
+
+  // 3. Match user custom relevance keywords
+  for (const keyword of keywordTokens) {
+    if (t.includes(keyword) || u.includes(keyword)) score += 5;
+  }
+
+  // 4. Direct match with name
+  if (t.includes(project.name.toLowerCase())) score += 5;
+
+  return score >= 3;
+};
+
+// Simulated AI metadata extraction (Tags and Summaries)
+const generateAutomatedMetadata = (title: string, url: string) => {
+  const t = title.toLowerCase();
+  const tags: string[] = ["Auto-Tracked"];
+  
+  if (url.includes("github.com")) tags.push("GitHub", "Code");
+  else if (url.includes("youtube.com") || url.includes("youtu.be")) tags.push("Video", "Media");
+  else if (url.endsWith(".pdf") || url.includes("datasheet") || url.includes("pdf")) tags.push("PDF", "Spec");
+  else if (url.includes("stackoverflow.com")) tags.push("Stack Overflow", "Q&A");
+  else tags.push("Web Docs");
+
+  if (t.includes("lidar")) tags.push("LiDAR", "Hardware");
+  if (t.includes("uart")) tags.push("UART", "Serial");
+  if (t.includes("pytorch") || t.includes("neural") || t.includes("ai")) tags.push("AI", "Deep Learning");
+  if (t.includes("react") || t.includes("vite") || t.includes("js") || t.includes("css")) tags.push("Frontend", "Web Dev");
+
+  let notes = `Automatically captured source from your browsing activity.`;
+  if (t.includes("lidar")) {
+    notes = `Technical specifications for single-point or multi-point LiDAR sensors. Critical for obstacle detection, height telemetry, and ranging.`;
+  } else if (t.includes("uart")) {
+    notes = `Hardware configuration reference for serial communication over UART interfaces, wiring pinouts, and register settings.`;
+  } else if (t.includes("pytorch") || t.includes("neural") || t.includes("ai")) {
+    notes = `Deep learning conceptual docs covering Autograd, neural layer structures, PyTorch tensors, and model checkpointing guidelines.`;
+  } else if (t.includes("vite") || t.includes("react") || t.includes("frontend")) {
+    notes = `Frontend web engineering documentation for modern development frameworks, fast dev servers, and build tools.`;
+  } else if (url.includes("github.com")) {
+    notes = `Open-source code repository containing driver software, utility APIs, and package documentation for integration.`;
+  } else if (url.includes("youtube.com")) {
+    notes = `Video explanation demonstrating setup, testing walkthroughs, or architectural highlights for this topic.`;
+  }
+
+  return { tags, notes };
+};
+
 function App() {
   // State for Projects (initially empty)
   const [projects, setProjects] = useState<Project[]>(() => {
@@ -202,9 +276,15 @@ function App() {
           name,
           description: "Active research folder",
           color: "#9d4edd",
+          trackingEnabled: true,
+          keywords: []
         }));
       }
-      return parsed;
+      return parsed.map((p: any) => ({
+        ...p,
+        trackingEnabled: p.trackingEnabled === undefined ? true : p.trackingEnabled,
+        keywords: p.keywords || []
+      }));
     } catch {
       return [];
     }
@@ -229,24 +309,18 @@ function App() {
     return [];
   });
 
-  // Live/Paused Tracking Status state
-  const [isTrackingLive, setIsTrackingLive] = useState<boolean>(() => {
-    const saved = localStorage.getItem("isTrackingLive");
-    return saved === null ? true : saved === "true";
-  });
+
 
   // Form states for creating a project
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [projectNameInput, setProjectNameInput] = useState("");
   const [projectDescInput, setProjectDescInput] = useState("");
+  const [projectKeywordsInput, setProjectKeywordsInput] = useState("");
 
-  // Form states for adding a source
-  const [isAddSourceOpen, setIsAddSourceOpen] = useState(false);
-  const [sourceTitle, setSourceTitle] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [sourceNotes, setSourceNotes] = useState("");
-  const [sourceTags, setSourceTags] = useState("");
-  const [validationError, setValidationError] = useState("");
+  // Simulator and Browsing Log states
+  const [activityLogs, setActivityLogs] = useState<LogEntry[]>([]);
+  const [simulatedTitle, setSimulatedTitle] = useState("");
+  const [simulatedUrl, setSimulatedUrl] = useState("");
 
   // Global Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -264,6 +338,7 @@ function App() {
   const [editingProjectName, setEditingProjectName] = useState<string | null>(null);
   const [editProjNameInput, setEditProjNameInput] = useState("");
   const [editProjDescInput, setEditProjDescInput] = useState("");
+  const [editProjKeywordsInput, setEditProjKeywordsInput] = useState("");
 
   // Mobile/Popup Responsive tab toggle state
   const [mobileTab, setMobileTab] = useState<"projects" | "sources">("sources");
@@ -281,9 +356,7 @@ function App() {
     localStorage.setItem("sources", JSON.stringify(sources));
   }, [sources]);
 
-  useEffect(() => {
-    localStorage.setItem("isTrackingLive", String(isTrackingLive));
-  }, [isTrackingLive]);
+
 
   // Handle Cmd/Ctrl + K shortcut for search focusing
   useEffect(() => {
@@ -312,16 +385,24 @@ function App() {
     const colors = ["#9d4edd", "#3a86c8", "#06d6a0", "#f77f00", "#ef4444", "#3b82f6"];
     const randomColor = colors[projects.length % colors.length];
 
+    const kArray = projectKeywordsInput
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
+
     const newProj: Project = {
       name: projectNameInput.trim(),
       description: projectDescInput.trim() || "Active research project workspace.",
       color: randomColor,
+      trackingEnabled: true,
+      keywords: kArray.length > 0 ? kArray : undefined
     };
 
     setProjects([...projects, newProj]);
     setActiveProject(newProj.name); // Auto set as active
     setProjectNameInput("");
     setProjectDescInput("");
+    setProjectKeywordsInput("");
     setIsCreatingProject(false);
     
     // Switch to sources view on mobile after creating
@@ -356,6 +437,11 @@ function App() {
       return;
     }
 
+    const kArray = editProjKeywordsInput
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k) => k.length > 0);
+
     setProjects(
       projects.map((p) => {
         if (p.name === oldName) {
@@ -363,6 +449,7 @@ function App() {
             ...p,
             name: newName,
             description: editProjDescInput.trim() || undefined,
+            keywords: kArray.length > 0 ? kArray : undefined
           };
         }
         return p;
@@ -390,53 +477,52 @@ function App() {
     setEditingProjectName(null);
   };
 
-  // Handle Source Creation
-  const handleAddSource = (e: React.FormEvent) => {
-    e.preventDefault();
-    setValidationError("");
+  // Handle Simulated Browsing Page Visit (Classifier routes to active matching projects)
+  const handleSimulateVisit = (title: string, url: string) => {
+    if (!title.trim() || !url.trim()) return;
 
-    if (!activeProject) {
-      setValidationError("Please select or create an active project first.");
-      return;
-    }
-
-    if (!sourceTitle.trim()) {
-      setValidationError("Source title is required.");
-      return;
-    }
-
-    if (!sourceUrl.trim()) {
-      setValidationError("Source URL is required.");
-      return;
-    }
-
-    // Basic URL validation
-    let formattedUrl = sourceUrl.trim();
+    let formattedUrl = url.trim();
     if (!/^https?:\/\//i.test(formattedUrl)) {
       formattedUrl = "https://" + formattedUrl;
     }
 
-    const tagArray = sourceTags
-      .split(",")
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
+    const matched: string[] = [];
+    const newSourcesToSave: Source[] = [];
 
-    const newSource: Source = {
+    projects.forEach((proj) => {
+      // Track page only if tracking is enabled on this project
+      if (proj.trackingEnabled && isPageRelevant(proj, title, formattedUrl)) {
+        matched.push(proj.name);
+        
+        const { tags, notes } = generateAutomatedMetadata(title, formattedUrl);
+        
+        const newSource: Source = {
+          id: Date.now() + Math.random(),
+          title: title.trim(),
+          url: formattedUrl,
+          project: proj.name,
+          notes,
+          tags,
+          createdAt: new Date().toISOString()
+        };
+        newSourcesToSave.push(newSource);
+      }
+    });
+
+    if (newSourcesToSave.length > 0) {
+      setSources((prev) => [...newSourcesToSave, ...prev]);
+    }
+
+    const newLog: LogEntry = {
       id: Date.now(),
-      title: sourceTitle.trim(),
+      timestamp: new Date().toLocaleTimeString(),
+      title: title.trim(),
       url: formattedUrl,
-      project: activeProject,
-      notes: sourceNotes.trim() || undefined,
-      tags: tagArray.length > 0 ? tagArray : undefined,
-      createdAt: new Date().toISOString(),
+      status: matched.length > 0 ? "captured" : "ignored",
+      matchedProjects: matched
     };
 
-    setSources([newSource, ...sources]); // Prepend for timeline order
-    setSourceTitle("");
-    setSourceUrl("");
-    setSourceNotes("");
-    setSourceTags("");
-    setIsAddSourceOpen(false);
+    setActivityLogs((prev) => [newLog, ...prev]);
   };
 
   // Handle Source Deletion
@@ -565,12 +651,23 @@ function App() {
             <div className="active-project-card-header">
               <span className="active-project-label">Current Research</span>
               <button
-                className={`tracking-status-toggle ${isTrackingLive ? "live" : "paused"}`}
-                onClick={() => setIsTrackingLive(!isTrackingLive)}
-                title={isTrackingLive ? "Pause Tracking" : "Resume Tracking"}
+                className={`tracking-status-toggle ${activeProjDetails?.trackingEnabled ? "live" : "paused"}`}
+                onClick={() => {
+                  if (activeProjDetails) {
+                    setProjects(
+                      projects.map((p) => {
+                        if (p.name === activeProject) {
+                          return { ...p, trackingEnabled: !p.trackingEnabled };
+                        }
+                        return p;
+                      })
+                    );
+                  }
+                }}
+                title={activeProjDetails?.trackingEnabled ? "Pause Tracking" : "Resume Tracking"}
               >
                 <span className="pulse-dot"></span>
-                <span>{isTrackingLive ? "Live" : "Paused"}</span>
+                <span>{activeProjDetails?.trackingEnabled ? "Live" : "Paused"}</span>
               </button>
             </div>
             <div className="active-project-name-row">
@@ -585,6 +682,15 @@ function App() {
                 <IconX />
               </button>
             </div>
+            {activeProjDetails?.keywords && activeProjDetails.keywords.length > 0 && (
+              <div className="active-project-keywords-container">
+                {activeProjDetails.keywords.map((k) => (
+                  <span key={k} className="active-keyword-chip">
+                    {k}
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="active-project-stats">
               <IconFolder />
               <span>
@@ -630,6 +736,13 @@ function App() {
                 className="input-glass"
                 value={projectDescInput}
                 onChange={(e) => setProjectDescInput(e.target.value)}
+              />
+              <input
+                type="text"
+                placeholder="Tracking keywords (e.g. LiDAR, PyTorch) (optional)..."
+                className="input-glass"
+                value={projectKeywordsInput}
+                onChange={(e) => setProjectKeywordsInput(e.target.value)}
               />
               <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "4px" }}>
                 <button
@@ -686,6 +799,13 @@ function App() {
                         onChange={(e) => setEditProjDescInput(e.target.value)}
                         placeholder="Description"
                       />
+                      <input
+                        type="text"
+                        className="input-glass edit-project-input"
+                        value={editProjKeywordsInput}
+                        onChange={(e) => setEditProjKeywordsInput(e.target.value)}
+                        placeholder="Tracking keywords (comma-separated)"
+                      />
                       <div className="edit-project-actions">
                         <button
                           type="button"
@@ -721,8 +841,35 @@ function App() {
                     }}
                   >
                     <div className="project-item-info">
-                      <span className="project-item-name">{proj.name}</span>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
+                        <span className="project-item-name">{proj.name}</span>
+                        <button
+                          className={`tracking-status-toggle-mini ${proj.trackingEnabled ? "live" : "paused"}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setProjects(
+                              projects.map((p) => {
+                                if (p.name === proj.name) {
+                                  return { ...p, trackingEnabled: !p.trackingEnabled };
+                                }
+                                return p;
+                              })
+                            );
+                          }}
+                          title={proj.trackingEnabled ? "Pause Tracking" : "Resume Tracking"}
+                        >
+                          <span className="pulse-dot-mini"></span>
+                          <span>{proj.trackingEnabled ? "Live" : "Paused"}</span>
+                        </button>
+                      </div>
                       <span className="project-item-count">{count} source{count !== 1 ? "s" : ""}</span>
+                      {proj.keywords && proj.keywords.length > 0 && (
+                        <div className="project-item-keywords-row">
+                          {proj.keywords.map((k) => (
+                            <span key={k} className="project-keyword-tag">{k}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div className="project-item-actions">
                       <button
@@ -732,6 +879,7 @@ function App() {
                           setEditingProjectName(proj.name);
                           setEditProjNameInput(proj.name);
                           setEditProjDescInput(proj.description || "");
+                          setEditProjKeywordsInput(proj.keywords ? proj.keywords.join(", ") : "");
                         }}
                         title="Edit Project"
                       >
@@ -805,114 +953,159 @@ function App() {
 
         {/* Dashboard Workspace Body */}
         <div className="dashboard-body">
-          {/* Active Project Hero Banner (Hidden if Searching) */}
-          {!isSearching && activeProject && activeProjDetails && (
-            <div className="project-hero">
-              <div className="project-hero-content">
-                <span className="project-hero-badge">Active Workspace</span>
-                <h2 className="project-hero-title">{activeProject}</h2>
-                <p className="project-hero-desc">
-                  {activeProjDetails.description || "Organizing research documents and concepts."}
+          {/* Browsing Simulator Console (Visible when not searching) */}
+          {!isSearching && (
+            <div className="simulator-console">
+              <div className="simulator-console-header">
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div className="pulse-dot"></div>
+                  <h3 className="simulator-title">Automated Browsing Activity Simulator</h3>
+                </div>
+                <span className="simulator-badge">Prototype Console</span>
+              </div>
+              
+              <div className="simulator-body">
+                <p className="simulator-desc">
+                  Simulate visiting pages in another browser tab. The classification engine will auto-extract metadata, determine relevance to your workspaces, and capture or ignore them.
                 </p>
-              </div>
-              <div className="project-hero-actions">
-                <button
-                  className="btn-glass"
-                  onClick={() => setIsAddSourceOpen(!isAddSourceOpen)}
-                >
-                  <IconPlus /> Add Source
-                </button>
-              </div>
-            </div>
-          )}
 
-          {/* Add Source Accordion Form */}
-          {activeProject && !isSearching && (
-            <div className="add-source-section">
-              <div className="collapsible-card">
-                <div
-                  className="collapsible-header"
-                  onClick={() => setIsAddSourceOpen(!isAddSourceOpen)}
-                >
-                  <span className="collapsible-title">
-                    <IconPlus /> Add Research Source to "{activeProject}"
-                  </span>
-                  <IconChevronDown isOpen={isAddSourceOpen} />
+                {/* Tracking warning if no live project */}
+                {!projects.some(p => p.trackingEnabled) && (
+                  <div className="simulator-warning">
+                    ⚠️ <strong>Notice:</strong> All workspace trackers are currently Paused. Simulated page visits will be logged but ignored. Turn a workspace tracking to <strong>Live</strong> in the sidebar to start capturing.
+                  </div>
+                )}
+
+                {/* Preset Actions grid */}
+                <div className="preset-grid-title">Preset Simulation Pages (Click to Visit)</div>
+                <div className="preset-grid">
+                  <button
+                    type="button"
+                    className="btn-preset-visit"
+                    onClick={() => handleSimulateVisit("TF02-Pro LiDAR Datasheet Manual", "https://benewake.com/datasheet/tf02-pro")}
+                    title="Simulate visiting a LiDAR datasheet"
+                  >
+                    📄 LiDAR Datasheet
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-preset-visit"
+                    onClick={() => handleSimulateVisit("Raspberry Pi 5 Serial UART Port Interface Pinouts", "https://raspberrypi.com/documentation/computers/configuration/uart")}
+                    title="Simulate visiting Raspberry Pi serial docs"
+                  >
+                    🔌 Raspberry Pi UART Docs
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-preset-visit"
+                    onClick={() => handleSimulateVisit("PyTorch Autograd: Automatic Differentiation Engine Guidelines", "https://pytorch.org/docs/stable/autograd.html")}
+                    title="Simulate visiting PyTorch neural network docs"
+                  >
+                    🧠 PyTorch Autograd Docs
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-preset-visit"
+                    onClick={() => handleSimulateVisit("Vite.js React Workspace Configuration Guide", "https://vite.dev/guide/")}
+                    title="Simulate visiting frontend Vite bundler docs"
+                  >
+                    ⚡ Vite.js React Guide
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-preset-visit btn-preset-entertainment"
+                    onClick={() => handleSimulateVisit("Cute Cat Compilation Videos 2026 - YouTube", "https://youtube.com/watch?v=catpass")}
+                    title="Simulate visiting a non-research entertainment site"
+                  >
+                    🐱 YouTube Fun (Should Ignore)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-preset-visit btn-preset-entertainment"
+                    onClick={() => handleSimulateVisit("Play Wordle Game Online - New York Times Games", "https://nytimes.com/games/wordle")}
+                    title="Simulate visiting a game page"
+                  >
+                    🎮 Wordle (Should Ignore)
+                  </button>
                 </div>
 
-                {isAddSourceOpen && (
-                  <form onSubmit={handleAddSource} className="collapsible-content">
-                    {validationError && (
-                      <div style={{ background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#ef4444", padding: "10px 14px", borderRadius: "8px", fontSize: "13px" }}>
-                        ⚠️ {validationError}
-                      </div>
+                {/* Custom page simulator form */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleSimulateVisit(simulatedTitle, simulatedUrl);
+                    setSimulatedTitle("");
+                    setSimulatedUrl("");
+                  }}
+                  className="custom-simulator-form"
+                >
+                  <div className="form-grid-2" style={{ gap: "12px", marginBottom: "8px" }}>
+                    <div className="form-group">
+                      <input
+                        type="text"
+                        placeholder="Simulated Page Title (e.g. LiDAR Calibration)..."
+                        className="input-glass"
+                        value={simulatedTitle}
+                        onChange={(e) => setSimulatedTitle(e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div className="form-group">
+                      <input
+                        type="text"
+                        placeholder="Simulated Page URL (e.g. github.com/lidar)..."
+                        className="input-glass"
+                        value={simulatedUrl}
+                        onChange={(e) => setSimulatedUrl(e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <button type="submit" className="btn-glass btn-glass-secondary" style={{ width: "100%", padding: "8px 12px", fontSize: "12px" }}>
+                    🚀 Simulate Custom Page Visit
+                  </button>
+                </form>
+
+                {/* Activity Feed Logs */}
+                <div className="log-feed-section">
+                  <div className="log-feed-header">
+                    <span className="log-feed-title">Real-Time Browsing Activity Log ({activityLogs.length})</span>
+                    {activityLogs.length > 0 && (
+                      <button className="btn-clear-logs" onClick={() => setActivityLogs([])}>
+                        Clear logs
+                      </button>
                     )}
-                    
-                    <div className="form-grid-2">
-                      <div className="form-group">
-                        <label className="form-label">Title *</label>
-                        <input
-                          type="text"
-                          placeholder="Source title"
-                          className="input-glass"
-                          value={sourceTitle}
-                          onChange={(e) => setSourceTitle(e.target.value)}
-                          required
-                        />
+                  </div>
+                  <div className="log-feed-list">
+                    {activityLogs.length === 0 ? (
+                      <div className="log-feed-empty">
+                        No activity logged yet. Click a preset page above to simulate browsing.
                       </div>
-                      <div className="form-group">
-                        <label className="form-label">URL *</label>
-                        <input
-                          type="text"
-                          placeholder="Source URL"
-                          className="input-glass"
-                          value={sourceUrl}
-                          onChange={(e) => setSourceUrl(e.target.value)}
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="form-grid-2">
-                      <div className="form-group">
-                        <label className="form-label">Notes & Summary</label>
-                        <input
-                          type="text"
-                          placeholder="Notes, details, or summary..."
-                          className="input-glass"
-                          value={sourceNotes}
-                          onChange={(e) => setSourceNotes(e.target.value)}
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Tags (comma-separated)</label>
-                        <input
-                          type="text"
-                          placeholder="Tags (comma-separated)"
-                          className="input-glass"
-                          value={sourceTags}
-                          onChange={(e) => setSourceTags(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="form-actions-row">
-                      <button
-                        type="button"
-                        className="btn-glass btn-glass-secondary"
-                        onClick={() => {
-                          setIsAddSourceOpen(false);
-                          setValidationError("");
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button type="submit" className="btn-glass">
-                        Save Source
-                      </button>
-                    </div>
-                  </form>
-                )}
+                    ) : (
+                      activityLogs.map((log) => (
+                        <div key={log.id} className={`log-row ${log.status}`}>
+                          <div className="log-row-meta">
+                            <span className="log-time">{log.timestamp}</span>
+                            <span className={`log-status-badge ${log.status}`}>
+                              {log.status === "captured" ? "Captured" : "Ignored"}
+                            </span>
+                          </div>
+                          <div className="log-row-details">
+                            <div className="log-page-title">{log.title}</div>
+                            <div className="log-page-url">{log.url}</div>
+                            {log.status === "captured" && (
+                              <div className="log-matches">
+                                Matched workspaces: {log.matchedProjects.map(p => (
+                                  <span key={p} className="log-match-badge">{p}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
