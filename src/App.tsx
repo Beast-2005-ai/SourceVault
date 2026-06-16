@@ -196,15 +196,37 @@ interface LogEntry {
   matchedProjects: string[];
 }
 
+const DOMAIN_GLOSSARIES: Record<string, string[]> = {
+  drone: ["drone", "uav", "quadcopter", "multirotor", "flight", "autopilot", "lidar", "uart", "telemetry", "calibration", "benewake", "hardware", "sensor", "gps", "px4", "ardupilot"],
+  neural: ["pytorch", "neural", "deep learning", "ai", "machine learning", "tensorflow", "autograd", "weights", "training", "tensor", "model", "epoch", "loss", "cnn", "rnn", "transformers"],
+  ai: ["pytorch", "neural", "deep learning", "ai", "machine learning", "tensorflow", "autograd", "weights", "training", "tensor", "model", "epoch", "loss", "cnn", "rnn", "transformers"],
+  web: ["vite", "react", "js", "ts", "css", "html", "bundler", "frontend", "developer", "chrome", "extension", "stackoverflow", "npm", "node", "webpack", "api", "url", "http"],
+  dev: ["vite", "react", "js", "ts", "css", "html", "bundler", "frontend", "developer", "chrome", "extension", "stackoverflow", "npm", "node", "webpack", "api", "url", "http"]
+};
+
 // Relevance classification algorithm
 const isPageRelevant = (project: Project, title: string, url: string): boolean => {
   const t = title.toLowerCase();
   const u = url.toLowerCase();
-  
-  // Tokenize workspace name, description, and keywords
+  const projNameLower = project.name.toLowerCase();
+
+  // Get matching glossary terms based on project name matching domain keys
+  let expandedKeywords: string[] = [];
+  Object.keys(DOMAIN_GLOSSARIES).forEach((key) => {
+    if (projNameLower.includes(key)) {
+      expandedKeywords = [...expandedKeywords, ...DOMAIN_GLOSSARIES[key]];
+    }
+  });
+
+  // Combine project keywords and domain glossary terms
+  const allKeywords = [
+    ...(project.keywords || []),
+    ...expandedKeywords
+  ].map(k => k.toLowerCase().trim()).filter(k => k.length > 0);
+
+  // Tokenize workspace name and description
   const nameTokens = project.name.toLowerCase().split(/\s+/).filter(tok => tok.length > 2);
   const descTokens = (project.description || "").toLowerCase().split(/\s+/).filter(tok => tok.length > 2);
-  const keywordTokens = (project.keywords || []).map(k => k.toLowerCase().trim()).filter(k => k.length > 0);
 
   let score = 0;
   
@@ -218,13 +240,13 @@ const isPageRelevant = (project: Project, title: string, url: string): boolean =
     if (t.includes(token) || u.includes(token)) score += 1;
   }
 
-  // 3. Match user custom relevance keywords
-  for (const keyword of keywordTokens) {
+  // 3. Match expanded keywords (glossary + auto-learned keywords)
+  for (const keyword of allKeywords) {
     if (t.includes(keyword) || u.includes(keyword)) score += 5;
   }
 
   // 4. Direct match with name
-  if (t.includes(project.name.toLowerCase())) score += 5;
+  if (t.includes(projNameLower)) score += 5;
 
   return score >= 3;
 };
@@ -488,8 +510,20 @@ function App() {
 
     const matched: string[] = [];
     const newSourcesToSave: Source[] = [];
+    const updatedProjects = [...projects];
 
-    projects.forEach((proj) => {
+    // Helper to extract keywords from title (words starting with capitals, excluding stop-words)
+    const extractKeywordsFromTitle = (t: string): string[] => {
+      const stopWords = new Set(["the", "and", "for", "with", "from", "your", "that", "this", "some", "here", "guide", "manual", "setup", "tutorial", "docs", "document", "documentation", "page", "website", "online"]);
+      return t
+        .split(/[^a-zA-Z0-9#+-]+/)
+        .map(w => w.trim())
+        .filter(w => w.length > 2 && !stopWords.has(w.toLowerCase()))
+        // Match words that start with a capital letter or represent core terms
+        .filter(w => /^[A-Z0-9#+-]/.test(w) || w.toLowerCase() === "drone" || w.toLowerCase() === "lidar" || w.toLowerCase() === "uart");
+    };
+
+    updatedProjects.forEach((proj, idx) => {
       // Track page only if tracking is enabled on this project
       if (proj.trackingEnabled && isPageRelevant(proj, title, formattedUrl)) {
         matched.push(proj.name);
@@ -506,11 +540,23 @@ function App() {
           createdAt: new Date().toISOString()
         };
         newSourcesToSave.push(newSource);
+
+        // Auto-detect and learn new keywords from this captured page!
+        const newDetectedKeywords = extractKeywordsFromTitle(title);
+        const existingKeywords = proj.keywords || [];
+        const mergedKeywords = Array.from(
+          new Set([...existingKeywords, ...newDetectedKeywords])
+        );
+        updatedProjects[idx] = {
+          ...proj,
+          keywords: mergedKeywords.length > 0 ? mergedKeywords : undefined
+        };
       }
     });
 
     if (newSourcesToSave.length > 0) {
       setSources((prev) => [...newSourcesToSave, ...prev]);
+      setProjects(updatedProjects); // Persist learned keywords to state and LocalStorage!
     }
 
     const newLog: LogEntry = {
