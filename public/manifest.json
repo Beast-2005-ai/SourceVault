@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "SourceVault",
+  "version": "1.0.0",
+  "description": "Automated background tab context tracking and semantic research capturing.",
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "action": {
+    "default_popup": "index.html",
+    "default_icon": "favicon.svg"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "icons": {
+    "128": "favicon.svg"
+  }
+}

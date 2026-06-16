@@ -1497,3 +1497,17 @@ mark {
   padding: 1px 6px;
   border-radius: 4px;
 }
+
+.form-group-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.form-label-mini {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: left;
+}

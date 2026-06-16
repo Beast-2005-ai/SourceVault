@@ -1,6 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import type { Source } from "./types/Source";
 
+declare const chrome: any;
+
 interface Project {
   name: string;
   description?: string;
@@ -187,162 +189,19 @@ const timeAgo = (dateStr: string) => {
   }
 };
 
-interface LogEntry {
-  id: number;
-  timestamp: string;
-  title: string;
-  url: string;
-  status: "captured" | "ignored";
-  matchedProjects: string[];
-}
 
-const DOMAIN_GLOSSARIES: Record<string, string[]> = {
-  drone: ["drone", "uav", "quadcopter", "multirotor", "flight", "autopilot", "lidar", "uart", "telemetry", "calibration", "benewake", "hardware", "sensor", "gps", "px4", "ardupilot"],
-  neural: ["pytorch", "neural", "deep learning", "ai", "machine learning", "tensorflow", "autograd", "weights", "training", "tensor", "model", "epoch", "loss", "cnn", "rnn", "transformers"],
-  ai: ["pytorch", "neural", "deep learning", "ai", "machine learning", "tensorflow", "autograd", "weights", "training", "tensor", "model", "epoch", "loss", "cnn", "rnn", "transformers"],
-  web: ["vite", "react", "js", "ts", "css", "html", "bundler", "frontend", "developer", "chrome", "extension", "stackoverflow", "npm", "node", "webpack", "api", "url", "http"],
-  dev: ["vite", "react", "js", "ts", "css", "html", "bundler", "frontend", "developer", "chrome", "extension", "stackoverflow", "npm", "node", "webpack", "api", "url", "http"]
-};
-
-// Relevance classification algorithm
-const isPageRelevant = (project: Project, title: string, url: string): boolean => {
-  const t = title.toLowerCase();
-  const u = url.toLowerCase();
-  const projNameLower = project.name.toLowerCase();
-
-  // Get matching glossary terms based on project name matching domain keys
-  let expandedKeywords: string[] = [];
-  Object.keys(DOMAIN_GLOSSARIES).forEach((key) => {
-    if (projNameLower.includes(key)) {
-      expandedKeywords = [...expandedKeywords, ...DOMAIN_GLOSSARIES[key]];
-    }
-  });
-
-  // Combine project keywords and domain glossary terms
-  const allKeywords = [
-    ...(project.keywords || []),
-    ...expandedKeywords
-  ].map(k => k.toLowerCase().trim()).filter(k => k.length > 0);
-
-  // Tokenize workspace name and description
-  const nameTokens = project.name.toLowerCase().split(/\s+/).filter(tok => tok.length > 2);
-  const descTokens = (project.description || "").toLowerCase().split(/\s+/).filter(tok => tok.length > 2);
-
-  let score = 0;
-  
-  // 1. Match project name tokens
-  for (const token of nameTokens) {
-    if (t.includes(token) || u.includes(token)) score += 3;
-  }
-  
-  // 2. Match project description tokens
-  for (const token of descTokens) {
-    if (t.includes(token) || u.includes(token)) score += 1;
-  }
-
-  // 3. Match expanded keywords (glossary + auto-learned keywords)
-  for (const keyword of allKeywords) {
-    if (t.includes(keyword) || u.includes(keyword)) score += 5;
-  }
-
-  // 4. Direct match with name
-  if (t.includes(projNameLower)) score += 5;
-
-  return score >= 3;
-};
-
-// Simulated AI metadata extraction (Tags and Summaries)
-const generateAutomatedMetadata = (title: string, url: string) => {
-  const t = title.toLowerCase();
-  const tags: string[] = ["Auto-Tracked"];
-  
-  if (url.includes("github.com")) tags.push("GitHub", "Code");
-  else if (url.includes("youtube.com") || url.includes("youtu.be")) tags.push("Video", "Media");
-  else if (url.endsWith(".pdf") || url.includes("datasheet") || url.includes("pdf")) tags.push("PDF", "Spec");
-  else if (url.includes("stackoverflow.com")) tags.push("Stack Overflow", "Q&A");
-  else tags.push("Web Docs");
-
-  if (t.includes("lidar")) tags.push("LiDAR", "Hardware");
-  if (t.includes("uart")) tags.push("UART", "Serial");
-  if (t.includes("pytorch") || t.includes("neural") || t.includes("ai")) tags.push("AI", "Deep Learning");
-  if (t.includes("react") || t.includes("vite") || t.includes("js") || t.includes("css")) tags.push("Frontend", "Web Dev");
-
-  let notes = `Automatically captured source from your browsing activity.`;
-  if (t.includes("lidar")) {
-    notes = `Technical specifications for single-point or multi-point LiDAR sensors. Critical for obstacle detection, height telemetry, and ranging.`;
-  } else if (t.includes("uart")) {
-    notes = `Hardware configuration reference for serial communication over UART interfaces, wiring pinouts, and register settings.`;
-  } else if (t.includes("pytorch") || t.includes("neural") || t.includes("ai")) {
-    notes = `Deep learning conceptual docs covering Autograd, neural layer structures, PyTorch tensors, and model checkpointing guidelines.`;
-  } else if (t.includes("vite") || t.includes("react") || t.includes("frontend")) {
-    notes = `Frontend web engineering documentation for modern development frameworks, fast dev servers, and build tools.`;
-  } else if (url.includes("github.com")) {
-    notes = `Open-source code repository containing driver software, utility APIs, and package documentation for integration.`;
-  } else if (url.includes("youtube.com")) {
-    notes = `Video explanation demonstrating setup, testing walkthroughs, or architectural highlights for this topic.`;
-  }
-
-  return { tags, notes };
-};
 
 function App() {
-  // State for Projects (initially empty)
-  const [projects, setProjects] = useState<Project[]>(() => {
-    const saved = localStorage.getItem("projects");
-    if (!saved) return [];
-    try {
-      const parsed = JSON.parse(saved);
-      // Backwards compatibility upgrade
-      if (parsed.length > 0 && typeof parsed[0] === "string") {
-        return parsed.map((name: string) => ({
-          name,
-          description: "Active research folder",
-          color: "#9d4edd",
-          trackingEnabled: true,
-          keywords: []
-        }));
-      }
-      return parsed.map((p: any) => ({
-        ...p,
-        trackingEnabled: p.trackingEnabled === undefined ? true : p.trackingEnabled,
-        keywords: p.keywords || []
-      }));
-    } catch {
-      return [];
-    }
-  });
-
-  // Active Project (initially empty)
-  const [activeProject, setActiveProject] = useState<string>(() => {
-    const saved = localStorage.getItem("activeProject");
-    return saved || "";
-  });
-
-  // Sources (initially empty)
-  const [sources, setSources] = useState<Source[]>(() => {
-    const saved = localStorage.getItem("sources");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return [];
-      }
-    }
-    return [];
-  });
-
-
+  const [isLoading, setIsLoading] = useState(true);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeProject, setActiveProject] = useState<string>("");
+  const [sources, setSources] = useState<Source[]>([]);
 
   // Form states for creating a project
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [projectNameInput, setProjectNameInput] = useState("");
   const [projectDescInput, setProjectDescInput] = useState("");
   const [projectKeywordsInput, setProjectKeywordsInput] = useState("");
-
-  // Simulator and Browsing Log states
-  const [activityLogs, setActivityLogs] = useState<LogEntry[]>([]);
-  const [simulatedTitle, setSimulatedTitle] = useState("");
-  const [simulatedUrl, setSimulatedUrl] = useState("");
 
   // Global Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -365,18 +224,132 @@ function App() {
   // Mobile/Popup Responsive tab toggle state
   const [mobileTab, setMobileTab] = useState<"projects" | "sources">("sources");
 
-  // Sync state to LocalStorage
+  // Load initial data from Chrome Storage or LocalStorage
   useEffect(() => {
+    const loadInitialData = () => {
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(["projects", "activeProject", "sources"], (result: any) => {
+          let loadedProjects: Project[] = [];
+          if (result.projects) {
+            try {
+              const parsed = typeof result.projects === "string" ? JSON.parse(result.projects) : result.projects;
+              loadedProjects = parsed.map((p: any) => ({
+                ...p,
+                trackingEnabled: p.trackingEnabled === undefined ? true : p.trackingEnabled,
+                keywords: p.keywords || []
+              }));
+            } catch (e) {
+              console.error("Error parsing projects from chrome.storage", e);
+            }
+          }
+
+          let loadedActiveProject = result.activeProject || "";
+          let loadedSources: Source[] = [];
+          if (result.sources) {
+            try {
+              loadedSources = typeof result.sources === "string" ? JSON.parse(result.sources) : result.sources;
+            } catch (e) {
+              console.error("Error parsing sources from chrome.storage", e);
+            }
+          }
+
+          setProjects(loadedProjects);
+          setActiveProject(loadedActiveProject);
+          setSources(loadedSources);
+          setIsLoading(false);
+        });
+      } else {
+        const savedProjects = localStorage.getItem("projects");
+        let loadedProjects: Project[] = [];
+        if (savedProjects) {
+          try {
+            const parsed = JSON.parse(savedProjects);
+            loadedProjects = parsed.map((p: any) => ({
+              ...p,
+              trackingEnabled: p.trackingEnabled === undefined ? true : p.trackingEnabled,
+              keywords: p.keywords || []
+            }));
+          } catch (e) {
+            console.error("Error parsing projects from localStorage", e);
+          }
+        }
+
+        const savedActiveProject = localStorage.getItem("activeProject") || "";
+        const savedSources = localStorage.getItem("sources");
+        let loadedSources: Source[] = [];
+        if (savedSources) {
+          try {
+            loadedSources = JSON.parse(savedSources);
+          } catch (e) {
+            console.error("Error parsing sources from localStorage", e);
+          }
+        }
+
+        setProjects(loadedProjects);
+        setActiveProject(savedActiveProject);
+        setSources(loadedSources);
+        setIsLoading(false);
+      }
+    };
+
+    loadInitialData();
+  }, []);
+
+  // Listen for message updates from the background tab tracker
+  useEffect(() => {
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
+      const handleMessage = (message: any) => {
+        if (message.action === "sourceCaptured" || message.action === "stateUpdated") {
+          chrome.storage.local.get(["sources", "projects"], (result: any) => {
+            if (result.sources) {
+              try {
+                const loadedSources = typeof result.sources === "string" ? JSON.parse(result.sources) : result.sources;
+                setSources(loadedSources);
+              } catch (e) {
+                console.error("Error parsing sources on message", e);
+              }
+            }
+            if (result.projects) {
+              try {
+                const loadedProjects = typeof result.projects === "string" ? JSON.parse(result.projects) : result.projects;
+                setProjects(loadedProjects);
+              } catch (e) {
+                console.error("Error parsing projects on message", e);
+              }
+            }
+          });
+        }
+      };
+
+      chrome.runtime.onMessage.addListener(handleMessage);
+      return () => chrome.runtime.onMessage.removeListener(handleMessage);
+    }
+  }, []);
+
+  // Sync state changes to storage
+  useEffect(() => {
+    if (isLoading) return;
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ projects });
+    }
     localStorage.setItem("projects", JSON.stringify(projects));
-  }, [projects]);
+  }, [projects, isLoading]);
 
   useEffect(() => {
+    if (isLoading) return;
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ activeProject });
+    }
     localStorage.setItem("activeProject", activeProject);
-  }, [activeProject]);
+  }, [activeProject, isLoading]);
 
   useEffect(() => {
+    if (isLoading) return;
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({ sources });
+    }
     localStorage.setItem("sources", JSON.stringify(sources));
-  }, [sources]);
+  }, [sources, isLoading]);
 
 
 
@@ -499,77 +472,7 @@ function App() {
     setEditingProjectName(null);
   };
 
-  // Handle Simulated Browsing Page Visit (Classifier routes to active matching projects)
-  const handleSimulateVisit = (title: string, url: string) => {
-    if (!title.trim() || !url.trim()) return;
 
-    let formattedUrl = url.trim();
-    if (!/^https?:\/\//i.test(formattedUrl)) {
-      formattedUrl = "https://" + formattedUrl;
-    }
-
-    const matched: string[] = [];
-    const newSourcesToSave: Source[] = [];
-    const updatedProjects = [...projects];
-
-    // Helper to extract keywords from title (words starting with capitals, excluding stop-words)
-    const extractKeywordsFromTitle = (t: string): string[] => {
-      const stopWords = new Set(["the", "and", "for", "with", "from", "your", "that", "this", "some", "here", "guide", "manual", "setup", "tutorial", "docs", "document", "documentation", "page", "website", "online"]);
-      return t
-        .split(/[^a-zA-Z0-9#+-]+/)
-        .map(w => w.trim())
-        .filter(w => w.length > 2 && !stopWords.has(w.toLowerCase()))
-        // Match words that start with a capital letter or represent core terms
-        .filter(w => /^[A-Z0-9#+-]/.test(w) || w.toLowerCase() === "drone" || w.toLowerCase() === "lidar" || w.toLowerCase() === "uart");
-    };
-
-    updatedProjects.forEach((proj, idx) => {
-      // Track page only if tracking is enabled on this project
-      if (proj.trackingEnabled && isPageRelevant(proj, title, formattedUrl)) {
-        matched.push(proj.name);
-        
-        const { tags, notes } = generateAutomatedMetadata(title, formattedUrl);
-        
-        const newSource: Source = {
-          id: Date.now() + Math.random(),
-          title: title.trim(),
-          url: formattedUrl,
-          project: proj.name,
-          notes,
-          tags,
-          createdAt: new Date().toISOString()
-        };
-        newSourcesToSave.push(newSource);
-
-        // Auto-detect and learn new keywords from this captured page!
-        const newDetectedKeywords = extractKeywordsFromTitle(title);
-        const existingKeywords = proj.keywords || [];
-        const mergedKeywords = Array.from(
-          new Set([...existingKeywords, ...newDetectedKeywords])
-        );
-        updatedProjects[idx] = {
-          ...proj,
-          keywords: mergedKeywords.length > 0 ? mergedKeywords : undefined
-        };
-      }
-    });
-
-    if (newSourcesToSave.length > 0) {
-      setSources((prev) => [...newSourcesToSave, ...prev]);
-      setProjects(updatedProjects); // Persist learned keywords to state and LocalStorage!
-    }
-
-    const newLog: LogEntry = {
-      id: Date.now(),
-      timestamp: new Date().toLocaleTimeString(),
-      title: title.trim(),
-      url: formattedUrl,
-      status: matched.length > 0 ? "captured" : "ignored",
-      matchedProjects: matched
-    };
-
-    setActivityLogs((prev) => [newLog, ...prev]);
-  };
 
   // Handle Source Deletion
   const handleDeleteSource = (id: number) => {
@@ -661,6 +564,21 @@ function App() {
   // Calculate current active project stats
   const activeProjDetails = projects.find((p) => p.name === activeProject);
   const activeProjSourceCount = sources.filter((s) => s.project === activeProject).length;
+
+  if (isLoading) {
+    return (
+      <div className="app-container" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "var(--bg-primary)" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
+          <div className="logo-icon" style={{ width: "48px", height: "48px", animation: "pulse 1.8s infinite" }}>
+            <IconBrain />
+          </div>
+          <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "18px", fontWeight: 600, color: "var(--text-secondary)" }}>
+            Loading SourceVault...
+          </h2>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -767,29 +685,38 @@ function App() {
           {/* New Project Form inline */}
           {isCreatingProject && (
             <form onSubmit={handleCreateProject} className="create-project-form">
-              <input
-                type="text"
-                placeholder="Workspace name..."
-                className="input-glass"
-                value={projectNameInput}
-                onChange={(e) => setProjectNameInput(e.target.value)}
-                autoFocus
-                required
-              />
-              <input
-                type="text"
-                placeholder="Description (optional)..."
-                className="input-glass"
-                value={projectDescInput}
-                onChange={(e) => setProjectDescInput(e.target.value)}
-              />
-              <input
-                type="text"
-                placeholder="Tracking keywords (e.g. LiDAR, PyTorch) (optional)..."
-                className="input-glass"
-                value={projectKeywordsInput}
-                onChange={(e) => setProjectKeywordsInput(e.target.value)}
-              />
+              <div className="form-group-mini">
+                <label className="form-label-mini">Workspace Name *</label>
+                <input
+                  type="text"
+                  placeholder=""
+                  className="input-glass"
+                  value={projectNameInput}
+                  onChange={(e) => setProjectNameInput(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="form-group-mini">
+                <label className="form-label-mini">Description (optional)</label>
+                <input
+                  type="text"
+                  placeholder=""
+                  className="input-glass"
+                  value={projectDescInput}
+                  onChange={(e) => setProjectDescInput(e.target.value)}
+                />
+              </div>
+              <div className="form-group-mini">
+                <label className="form-label-mini">Tracking Keywords (optional)</label>
+                <input
+                  type="text"
+                  placeholder=""
+                  className="input-glass"
+                  value={projectKeywordsInput}
+                  onChange={(e) => setProjectKeywordsInput(e.target.value)}
+                />
+              </div>
               <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "4px" }}>
                 <button
                   type="button"
@@ -830,28 +757,35 @@ function App() {
                         handleSaveProjectEdit(proj.name);
                       }}
                     >
-                      <input
-                        type="text"
-                        className="input-glass edit-project-input"
-                        value={editProjNameInput}
-                        onChange={(e) => setEditProjNameInput(e.target.value)}
-                        required
-                        autoFocus
-                      />
-                      <input
-                        type="text"
-                        className="input-glass edit-project-input"
-                        value={editProjDescInput}
-                        onChange={(e) => setEditProjDescInput(e.target.value)}
-                        placeholder="Description"
-                      />
-                      <input
-                        type="text"
-                        className="input-glass edit-project-input"
-                        value={editProjKeywordsInput}
-                        onChange={(e) => setEditProjKeywordsInput(e.target.value)}
-                        placeholder="Tracking keywords (comma-separated)"
-                      />
+                      <div className="form-group-mini">
+                        <label className="form-label-mini">Workspace Name *</label>
+                        <input
+                          type="text"
+                          className="input-glass edit-project-input"
+                          value={editProjNameInput}
+                          onChange={(e) => setEditProjNameInput(e.target.value)}
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      <div className="form-group-mini">
+                        <label className="form-label-mini">Description (optional)</label>
+                        <input
+                          type="text"
+                          className="input-glass edit-project-input"
+                          value={editProjDescInput}
+                          onChange={(e) => setEditProjDescInput(e.target.value)}
+                        />
+                      </div>
+                      <div className="form-group-mini">
+                        <label className="form-label-mini">Tracking Keywords (optional)</label>
+                        <input
+                          type="text"
+                          className="input-glass edit-project-input"
+                          value={editProjKeywordsInput}
+                          onChange={(e) => setEditProjKeywordsInput(e.target.value)}
+                        />
+                      </div>
                       <div className="edit-project-actions">
                         <button
                           type="button"
@@ -999,159 +933,32 @@ function App() {
 
         {/* Dashboard Workspace Body */}
         <div className="dashboard-body">
-          {/* Browsing Simulator Console (Visible when not searching) */}
-          {!isSearching && (
-            <div className="simulator-console">
-              <div className="simulator-console-header">
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <div className="pulse-dot"></div>
-                  <h3 className="simulator-title">Automated Browsing Activity Simulator</h3>
-                </div>
-                <span className="simulator-badge">Prototype Console</span>
+          {/* Active Project Hero Banner */}
+          {!isSearching && activeProjDetails && (
+            <div className="project-hero">
+              <div className="project-hero-content">
+                <span className="project-hero-badge">Active Workspace</span>
+                <h2 className="project-hero-title">{activeProjDetails.name}</h2>
+                <p className="project-hero-desc">{activeProjDetails.description}</p>
               </div>
-              
-              <div className="simulator-body">
-                <p className="simulator-desc">
-                  Simulate visiting pages in another browser tab. The classification engine will auto-extract metadata, determine relevance to your workspaces, and capture or ignore them.
-                </p>
-
-                {/* Tracking warning if no live project */}
-                {!projects.some(p => p.trackingEnabled) && (
-                  <div className="simulator-warning">
-                    ⚠️ <strong>Notice:</strong> All workspace trackers are currently Paused. Simulated page visits will be logged but ignored. Turn a workspace tracking to <strong>Live</strong> in the sidebar to start capturing.
-                  </div>
-                )}
-
-                {/* Preset Actions grid */}
-                <div className="preset-grid-title">Preset Simulation Pages (Click to Visit)</div>
-                <div className="preset-grid">
-                  <button
-                    type="button"
-                    className="btn-preset-visit"
-                    onClick={() => handleSimulateVisit("TF02-Pro LiDAR Datasheet Manual", "https://benewake.com/datasheet/tf02-pro")}
-                    title="Simulate visiting a LiDAR datasheet"
-                  >
-                    📄 LiDAR Datasheet
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-preset-visit"
-                    onClick={() => handleSimulateVisit("Raspberry Pi 5 Serial UART Port Interface Pinouts", "https://raspberrypi.com/documentation/computers/configuration/uart")}
-                    title="Simulate visiting Raspberry Pi serial docs"
-                  >
-                    🔌 Raspberry Pi UART Docs
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-preset-visit"
-                    onClick={() => handleSimulateVisit("PyTorch Autograd: Automatic Differentiation Engine Guidelines", "https://pytorch.org/docs/stable/autograd.html")}
-                    title="Simulate visiting PyTorch neural network docs"
-                  >
-                    🧠 PyTorch Autograd Docs
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-preset-visit"
-                    onClick={() => handleSimulateVisit("Vite.js React Workspace Configuration Guide", "https://vite.dev/guide/")}
-                    title="Simulate visiting frontend Vite bundler docs"
-                  >
-                    ⚡ Vite.js React Guide
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-preset-visit btn-preset-entertainment"
-                    onClick={() => handleSimulateVisit("Cute Cat Compilation Videos 2026 - YouTube", "https://youtube.com/watch?v=catpass")}
-                    title="Simulate visiting a non-research entertainment site"
-                  >
-                    🐱 YouTube Fun (Should Ignore)
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-preset-visit btn-preset-entertainment"
-                    onClick={() => handleSimulateVisit("Play Wordle Game Online - New York Times Games", "https://nytimes.com/games/wordle")}
-                    title="Simulate visiting a game page"
-                  >
-                    🎮 Wordle (Should Ignore)
-                  </button>
-                </div>
-
-                {/* Custom page simulator form */}
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleSimulateVisit(simulatedTitle, simulatedUrl);
-                    setSimulatedTitle("");
-                    setSimulatedUrl("");
+              <div className="project-hero-actions">
+                <button
+                  className={`tracking-status-toggle ${activeProjDetails.trackingEnabled ? "live" : "paused"}`}
+                  onClick={() => {
+                    setProjects(
+                      projects.map((p) => {
+                        if (p.name === activeProject) {
+                          return { ...p, trackingEnabled: !p.trackingEnabled };
+                        }
+                        return p;
+                      })
+                    );
                   }}
-                  className="custom-simulator-form"
+                  title={activeProjDetails.trackingEnabled ? "Pause Tracking" : "Resume Tracking"}
                 >
-                  <div className="form-grid-2" style={{ gap: "12px", marginBottom: "8px" }}>
-                    <div className="form-group">
-                      <input
-                        type="text"
-                        placeholder="Simulated Page Title (e.g. LiDAR Calibration)..."
-                        className="input-glass"
-                        value={simulatedTitle}
-                        onChange={(e) => setSimulatedTitle(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="form-group">
-                      <input
-                        type="text"
-                        placeholder="Simulated Page URL (e.g. github.com/lidar)..."
-                        className="input-glass"
-                        value={simulatedUrl}
-                        onChange={(e) => setSimulatedUrl(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <button type="submit" className="btn-glass btn-glass-secondary" style={{ width: "100%", padding: "8px 12px", fontSize: "12px" }}>
-                    🚀 Simulate Custom Page Visit
-                  </button>
-                </form>
-
-                {/* Activity Feed Logs */}
-                <div className="log-feed-section">
-                  <div className="log-feed-header">
-                    <span className="log-feed-title">Real-Time Browsing Activity Log ({activityLogs.length})</span>
-                    {activityLogs.length > 0 && (
-                      <button className="btn-clear-logs" onClick={() => setActivityLogs([])}>
-                        Clear logs
-                      </button>
-                    )}
-                  </div>
-                  <div className="log-feed-list">
-                    {activityLogs.length === 0 ? (
-                      <div className="log-feed-empty">
-                        No activity logged yet. Click a preset page above to simulate browsing.
-                      </div>
-                    ) : (
-                      activityLogs.map((log) => (
-                        <div key={log.id} className={`log-row ${log.status}`}>
-                          <div className="log-row-meta">
-                            <span className="log-time">{log.timestamp}</span>
-                            <span className={`log-status-badge ${log.status}`}>
-                              {log.status === "captured" ? "Captured" : "Ignored"}
-                            </span>
-                          </div>
-                          <div className="log-row-details">
-                            <div className="log-page-title">{log.title}</div>
-                            <div className="log-page-url">{log.url}</div>
-                            {log.status === "captured" && (
-                              <div className="log-matches">
-                                Matched workspaces: {log.matchedProjects.map(p => (
-                                  <span key={p} className="log-match-badge">{p}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+                  <span className="pulse-dot"></span>
+                  <span>{activeProjDetails.trackingEnabled ? "Live" : "Paused"}</span>
+                </button>
               </div>
             </div>
           )}
